@@ -6,6 +6,7 @@
 import os
 import torch
 import torch.nn as nn
+import numpy as np
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import tqdm
@@ -30,9 +31,10 @@ class Trainer:
                  hidden_dim: int = 128,
                  num_layers: int = 4,
                  rff_scale: float = 30.0,
-                 lr: float = 1e-3,
+                 lr: float = 2e-4,
                  batch_size: int = 256,
-                 n_samples: int = 10000,
+                 n_samples: int = 50000,
+                 steps_per_epoch: int = 200,
                  device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
                  use_ema: bool = True,
                  # Decoupled loss 参数
@@ -50,6 +52,7 @@ class Trainer:
             lr: 学习率
             batch_size: 批次大小
             n_samples: 数据集样本数
+            steps_per_epoch: 每个epoch的训练步数（重复采样数据）
             device: 计算设备
             use_ema: 是否使用 EMA
             lambda_dir: 方向损失权重
@@ -62,6 +65,7 @@ class Trainer:
         self.device = device
         self.batch_size = batch_size
         self.use_ema = use_ema
+        self.steps_per_epoch = steps_per_epoch
         
         # 设置实验名称
         if exp_name is None:
@@ -138,9 +142,11 @@ class Trainer:
             'num_timesteps': num_timesteps,
             'hidden_dim': hidden_dim,
             'num_layers': num_layers,
+            'rff_scale': rff_scale,
             'lr': lr,
             'batch_size': batch_size,
             'n_samples': n_samples,
+            'steps_per_epoch': steps_per_epoch,
             'lambda_dir': lambda_dir,
             'lambda_norm': lambda_norm,
             'use_huber': use_huber,
@@ -175,21 +181,42 @@ class Trainer:
             num_samples_viz: 可视化时的采样数量
         """
         print(f"\nStarting training for {num_epochs} epochs...")
+        print(f"  Steps per epoch: {self.steps_per_epoch}")
         
-        # 创建学习率调度器
-        lr_scheduler = CosineAnnealingLR(self.optimizer, T_max=num_epochs)
+        # 创建学习率调度器 (带 Warmup)
+        total_steps = num_epochs * self.steps_per_epoch
+        warmup_steps = min(500, total_steps // 10)  # 10% warmup or 500 steps
+        
+        def lr_lambda(current_step):
+            if current_step < warmup_steps:
+                # Linear warmup
+                return float(current_step) / float(max(1, warmup_steps))
+            else:
+                # Cosine decay
+                progress = float(current_step - warmup_steps) / float(max(1, total_steps - warmup_steps))
+                return max(0.0, 0.5 * (1.0 + np.cos(np.pi * progress)))
+        
+        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda)
         
         best_loss = float('inf')
+        global_step = 0
+        
+        # 创建无限数据迭代器
+        def infinite_dataloader():
+            while True:
+                for batch in self.dataloader:
+                    yield batch
+        
+        data_iter = infinite_dataloader()
         
         for epoch in range(num_epochs):
             self.model.train()
             epoch_loss = 0.0
             epoch_metrics = {}
-            num_batches = 0
             
-            pbar = tqdm(self.dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
-            for batch in pbar:
-                x_0 = batch.to(self.device)
+            pbar = tqdm(range(self.steps_per_epoch), desc=f"Epoch {epoch+1}/{num_epochs}")
+            for step in pbar:
+                x_0 = next(data_iter).to(self.device)
                 
                 # 训练步
                 self.optimizer.zero_grad()
@@ -200,6 +227,8 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
                 
                 self.optimizer.step()
+                lr_scheduler.step()  # Step-wise LR update
+                global_step += 1
 
                 # Update EMA
                 if self.use_ema:
@@ -209,17 +238,13 @@ class Trainer:
                 epoch_loss += loss.item()
                 for k, v in info.items():
                     epoch_metrics[k] = epoch_metrics.get(k, 0) + v
-                num_batches += 1
                 
-                pbar.set_postfix({'loss': loss.item()})
-            
-            # 更新学习率
-            lr_scheduler.step()
+                pbar.set_postfix({'loss': f'{loss.item():.4f}', 'lr': f'{lr_scheduler.get_last_lr()[0]:.2e}'})
             
             # 计算平均值
-            epoch_loss /= num_batches
+            epoch_loss /= self.steps_per_epoch
             for k in epoch_metrics:
-                epoch_metrics[k] /= num_batches
+                epoch_metrics[k] /= self.steps_per_epoch
             
             # 记录历史
             self.history['loss'].append(epoch_loss)
@@ -229,7 +254,7 @@ class Trainer:
             if (epoch + 1) % log_interval == 0:
                 print(f"\nEpoch {epoch+1}/{num_epochs}")
                 print(f"  Loss: {epoch_loss:.6f}")
-                print(f"  LR: {lr_scheduler.get_last_lr()[0]:.6f}")
+                print(f"  LR: {lr_scheduler.get_last_lr()[0]:.2e}")
                 for k, v in epoch_metrics.items():
                     print(f"  {k}: {v:.6f}")
             

@@ -15,7 +15,7 @@ class EMA:
     Exponential Moving Average (EMA) for model parameters.
     Standard practice in Image Diffusion and Diffusion Policy.
     """
-    def __init__(self, model: nn.Module, decay: float = 0.9999):
+    def __init__(self, model: nn.Module, decay: float = 0.995):
         self.decay = decay
         # Create a shadow map of parameters
         # Use a plain dict instead of nn.ModuleDict because parameters with dots in names
@@ -396,8 +396,12 @@ class DDPM:
         """
         batch_size = x_0.shape[0]
         
-        # 随机采样时间步
-        t = torch.randint(0, self.scheduler.num_timesteps, (batch_size,), device=self.device)
+        # Importance Sampling: 对低 t 区域进行更多采样
+        # 使用 sqrt 分布让模型在接近数据的时间步获得更多训练
+        # t ~ sqrt(Uniform(0, T^2)) 等价于对小 t 有更高的采样概率
+        u = torch.rand(batch_size, device=self.device)
+        t = (u * self.scheduler.num_timesteps).long()
+        t = torch.clamp(t, 0, self.scheduler.num_timesteps - 1)
         
         # 前向扩散
         noise = torch.randn_like(x_0)

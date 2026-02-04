@@ -149,7 +149,9 @@ class GaussianFourierProjection(nn.Module):
         super().__init__()
         # Randomly sample weights during initialization. These weights are fixed 
         # during optimization and are not trainable.
-        self.W = nn.Parameter(torch.randn(embed_dim // 2, 2) * scale, requires_grad=False)
+        # 固定随机种子以保证可复现性
+        rng = torch.Generator().manual_seed(42)
+        self.W = nn.Parameter(torch.randn(embed_dim // 2, 2, generator=rng) * scale, requires_grad=False)
     
     def forward(self, x):
         x_proj = x @ self.W.T * 2 * np.pi
