@@ -34,6 +34,7 @@ class Trainer:
                  lr: float = 2e-4,
                  batch_size: int = 256,
                  n_samples: int = 50000,
+                 noise: float = 0.05,
                  steps_per_epoch: int = 200,
                  device: str = 'cuda' if torch.cuda.is_available() else 'cpu',
                  use_ema: bool = True,
@@ -66,6 +67,7 @@ class Trainer:
         self.batch_size = batch_size
         self.use_ema = use_ema
         self.steps_per_epoch = steps_per_epoch
+        self.noise = noise
         
         # 设置实验名称
         if exp_name is None:
@@ -83,7 +85,8 @@ class Trainer:
         self.dataloader = get_dataloader(
             dataset_type=dataset_type,
             n_samples=n_samples,
-            batch_size=batch_size
+            batch_size=batch_size,
+            noise=noise
         )
         
         # 创建模型
@@ -146,6 +149,7 @@ class Trainer:
             'lr': lr,
             'batch_size': batch_size,
             'n_samples': n_samples,
+            'noise': noise,
             'steps_per_epoch': steps_per_epoch,
             'lambda_dir': lambda_dir,
             'lambda_norm': lambda_norm,
@@ -433,7 +437,10 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--hidden_dim', type=int, default=128)
     parser.add_argument('--num_layers', type=int, default=4)
+    parser.add_argument('--rff_scale', type=float, default=30.0)
     parser.add_argument('--num_timesteps', type=int, default=1000)
+    parser.add_argument('--steps_per_epoch', type=int, default=200)
+    parser.add_argument('--noise', type=float, default=0.05)
     parser.add_argument('--lambda_dir', type=float, default=1.0)
     parser.add_argument('--lambda_norm', type=float, default=0.5)
     
@@ -448,6 +455,9 @@ if __name__ == "__main__":
         hidden_dim=args.hidden_dim,
         num_layers=args.num_layers,
         num_timesteps=args.num_timesteps,
+        rff_scale=args.rff_scale,
+        steps_per_epoch=args.steps_per_epoch,
+        noise=args.noise,
         lambda_dir=args.lambda_dir,
         lambda_norm=args.lambda_norm
     )

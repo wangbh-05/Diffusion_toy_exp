@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 class SpiralDataset(Dataset):
     """2-arm Spiral 数据集"""
     
-    def __init__(self, n_samples: int = 10000, noise: float = 0.05, seed: int = 42):
+    def __init__(self, n_samples: int = 10000, noise: float = 0.02, seed: int = 42):
         """
         Args:
             n_samples: 样本数量
