@@ -282,9 +282,19 @@ class SinkVisualizer:
         # --- 图2: Score Field ---
         plt.figure(figsize=(10, 10))
         if gt_data is not None:
-            plt.scatter(gt_data[:, 0], gt_data[:, 1], s=1, c='black', alpha=0.1, zorder=0)
-            
-        plt.quiver(xx, yy, score_u, score_v, color='green', scale=30, headwidth=3, alpha=0.8, zorder=1)
+            plt.scatter(gt_data[:, 0], gt_data[:, 1], s=1, c='black', alpha=0.1, zorder=1)
+
+        # 背景：Score 强度热力图（使用全分辨率 grid_size）
+        score_mag = np.linalg.norm(score_vectors, axis=1).reshape(grid_size, grid_size)
+        plt.imshow(np.log1p(score_mag), extent=[-range_limit, range_limit, -range_limit, range_limit],
+                   origin='lower', cmap='Greens', alpha=0.35, zorder=0)
+
+        # 箭头：子采样显示，确保箭头分辨率低于背景
+        score_step = max(1, grid_size // 25)
+        plt.quiver(xx[::score_step, ::score_step], yy[::score_step, ::score_step],
+                   score_u[::score_step, ::score_step], score_v[::score_step, ::score_step],
+                   color='green', scale=30, headwidth=3, alpha=0.9, zorder=2)
+
         plt.title(f"Score Field (Diffusion Direction) at t={t_eval}")
         plt.xlim(-range_limit, range_limit)
         plt.ylim(-range_limit, range_limit)

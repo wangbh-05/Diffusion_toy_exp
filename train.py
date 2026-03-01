@@ -441,6 +441,8 @@ if __name__ == "__main__":
     parser.add_argument('--num_timesteps', type=int, default=1000)
     parser.add_argument('--steps_per_epoch', type=int, default=200)
     parser.add_argument('--noise', type=float, default=0.05)
+    parser.add_argument('--use_huber', action='store_true', help='Use Huber loss for stability')
+    parser.add_argument('--no_ema', action='store_true', help='Disable EMA')
     parser.add_argument('--lambda_dir', type=float, default=1.0)
     parser.add_argument('--lambda_norm', type=float, default=0.5)
     
@@ -449,7 +451,6 @@ if __name__ == "__main__":
     trainer = Trainer(
         model_type=args.model_type,
         dataset_type=args.dataset,
-        num_epochs=args.epochs,
         batch_size=args.batch_size,
         lr=args.lr,
         hidden_dim=args.hidden_dim,
@@ -458,6 +459,8 @@ if __name__ == "__main__":
         rff_scale=args.rff_scale,
         steps_per_epoch=args.steps_per_epoch,
         noise=args.noise,
+        use_huber=args.use_huber,
+        use_ema=(not args.no_ema),
         lambda_dir=args.lambda_dir,
         lambda_norm=args.lambda_norm
     )
